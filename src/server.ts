@@ -11,19 +11,14 @@ import { exchangeCodeForTokens } from './integrations/google-calendar.js';
 import { handleOnboardingMessage } from './onboarding/index.js';
 import { getOwnerByWhatsApp } from './db/queries/owners.js';
 import { inngest } from './inngest/client.js';
-import {
-  purgeOnboardingFilesJob,
-  purgeOldTranscriptsJob,
-  dailyBriefingSchedulerJob,
-  hunterFollowUpJob,
-  farmerSeasonalCampaignJob,
-  farmerReviewRequestJob,
-  dailyBriefingJob,
-  sendBriefingJob,
-  poolOpeningCampaignJob,
-  poolClosingCampaignJob,
-  processOnboardingFileJob,
-} from './inngest/client.js';
+import { purgeOnboardingFilesJob } from './inngest/jobs/purge-onboarding-files.js';
+import { purgeOldTranscriptsJob } from './inngest/jobs/purge-old-transcripts.js';
+import { dailyBriefingSchedulerJob } from './inngest/jobs/daily-briefing-scheduler.js';
+import { hunterFollowUpJob } from './engines/hunter/index.js';
+import { farmerSeasonalCampaignJob, farmerReviewRequestJob } from './engines/farmer/index.js';
+import { dailyBriefingJob, sendBriefingJob } from './engines/briefer/index.js';
+import { poolOpeningCampaignJob, poolClosingCampaignJob } from './engines/farmer/campaign-scheduler.js';
+import { processOnboardingFileJob } from './onboarding/index.js';
 import { logger } from './lib/logger.js';
 
 const app = Fastify({
