@@ -1,0 +1,27 @@
+import type { Owner } from '../../src/orchestrator/types.js';
+
+export const testOwner: Owner = {
+  id: '00000000-0000-0000-0000-000000000001',
+  business_name: 'Test Pool Services',
+  owner_name: 'Miguel',
+  owner_whatsapp: '+34600000001',
+  business_phone: '+34900000001',
+  twilio_number_sid: 'PN_test',
+  retell_agent_id: 'agent_test',
+  service_area: ['Marbella', 'Estepona'],
+  languages: ['es', 'en'],
+  ai_persona_name: 'asistente',
+  pricing_notes: '100-200€/mes',
+  booking_rules: { no_sundays: true, max_advance_days: 14 },
+  emergency_phone: '+34600000002',
+  google_calendar_id: 'primary',
+  google_tokens_enc: null,
+  whatsapp_360_channel_id: null,
+  briefing_time: '07:00',
+  transcript_retention_months: 24,
+  onboarding_completed_at: new Date().toISOString(),
+  subscription_tier: 'growth',
+  stripe_customer_id: null,
+  created_at: new Date().toISOString(),
+  deleted_at: null,
+};
