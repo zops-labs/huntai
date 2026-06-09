@@ -21,7 +21,7 @@ const piiSafeFormat = winston.format((info) => {
   return stripPII(info as Record<string, unknown>) as winston.Logform.TransformableInfo;
 });
 
-export const logger = winston.createLogger({
+const winstonLogger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: winston.format.combine(
     piiSafeFormat(),
@@ -33,6 +33,31 @@ export const logger = winston.createLogger({
   ),
   transports: [new winston.transports.Console()],
 });
+
+// Pino-compatible logger interface:
+//   logger.info('message')
+//   logger.info({ meta }, 'message')
+//   logger.info({ meta })
+type Meta = Record<string, unknown>;
+
+function makeMethod(level: 'info' | 'debug' | 'warn' | 'error') {
+  return (objOrMsg: Meta | string | Error, msg?: string): void => {
+    if (typeof objOrMsg === 'string') {
+      winstonLogger[level](objOrMsg);
+    } else if (objOrMsg instanceof Error) {
+      winstonLogger[level](msg ?? objOrMsg.message, { err: objOrMsg });
+    } else {
+      winstonLogger[level](msg ?? '', objOrMsg);
+    }
+  };
+}
+
+export const logger = {
+  info:  makeMethod('info'),
+  debug: makeMethod('debug'),
+  warn:  makeMethod('warn'),
+  error: makeMethod('error'),
+};
 
 /**
  * Hash a phone number for safe logging (first 6 chars + ***).

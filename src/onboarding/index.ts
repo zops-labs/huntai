@@ -204,7 +204,7 @@ export const processOnboardingFileJob = inngest.createFunction(
     if (file_type === '.txt') {
       // WhatsApp export
       const result = await step.run('parse-whatsapp', async () => {
-        const chatText = fileBuffer.toString('utf8');
+        const chatText = (fileBuffer as Buffer).toString('utf8');
         const parsed = await parseWhatsAppExport(chatText, owner.owner_name);
 
         if (parsed.confidence < 0.3) {
@@ -246,7 +246,7 @@ export const processOnboardingFileJob = inngest.createFunction(
       errors = result.errors;
     } else if (file_type === '.csv') {
       const result = await step.run('parse-csv', async () => {
-        const csvText = fileBuffer.toString('utf8');
+        const csvText = (fileBuffer as Buffer).toString('utf8');
         const { headers, rows } = parseCSVText(csvText);
         const mapping = await detectColumnMapping(headers, rows.slice(0, 5));
         const customers = parseCSVRows(rows, mapping);
@@ -294,7 +294,7 @@ export const processOnboardingFileJob = inngest.createFunction(
       created = result.created;
     } else if (file_type === '.vcf') {
       const result = await step.run('parse-vcf', async () => {
-        const vcfText = fileBuffer.toString('utf8');
+        const vcfText = (fileBuffer as Buffer).toString('utf8');
         const contacts = parseVCF(vcfText);
         let c = 0;
         for (const contact of contacts) {
