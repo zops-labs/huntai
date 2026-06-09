@@ -181,13 +181,16 @@ export const processOnboardingFileJob = inngest.createFunction(
     });
 
     // Download file from Supabase Storage
-    const fileBuffer = await step.run('download-file', async () => {
+    // Inngest serializes Buffer as { type: "Buffer", data: number[] } across steps,
+    // so we return a plain base64 string and reconstruct on the other side.
+    const fileBase64 = await step.run('download-file', async () => {
       const { data, error } = await supabase.storage
         .from('onboarding-temp')
         .download(storage_path);
       if (error || !data) throw new Error('Failed to download file');
-      return Buffer.from(await data.arrayBuffer());
-    });
+      return Buffer.from(await data.arrayBuffer()).toString('base64');
+    }) as string;
+    const fileBuffer = Buffer.from(fileBase64, 'base64');
 
     // Get owner info
     const { data: owner } = await supabase
@@ -204,7 +207,7 @@ export const processOnboardingFileJob = inngest.createFunction(
     if (file_type === '.txt') {
       // WhatsApp export
       const result = await step.run('parse-whatsapp', async () => {
-        const chatText = (fileBuffer as Buffer).toString('utf8');
+        const chatText = fileBuffer.toString('utf8');
         const parsed = await parseWhatsAppExport(chatText, owner.owner_name);
 
         if (parsed.confidence < 0.3) {
@@ -246,7 +249,7 @@ export const processOnboardingFileJob = inngest.createFunction(
       errors = result.errors;
     } else if (file_type === '.csv') {
       const result = await step.run('parse-csv', async () => {
-        const csvText = (fileBuffer as Buffer).toString('utf8');
+        const csvText = fileBuffer.toString('utf8');
         const { headers, rows } = parseCSVText(csvText);
         const mapping = await detectColumnMapping(headers, rows.slice(0, 5));
         const customers = parseCSVRows(rows, mapping);
@@ -294,7 +297,7 @@ export const processOnboardingFileJob = inngest.createFunction(
       created = result.created;
     } else if (file_type === '.vcf') {
       const result = await step.run('parse-vcf', async () => {
-        const vcfText = (fileBuffer as Buffer).toString('utf8');
+        const vcfText = fileBuffer.toString('utf8');
         const contacts = parseVCF(vcfText);
         let c = 0;
         for (const contact of contacts) {

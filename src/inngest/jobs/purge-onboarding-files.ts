@@ -12,16 +12,15 @@ export const purgeOnboardingFilesJob = inngest.createFunction(
   async ({ step }) => {
     const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000);
 
-    const { data: imports } = await step.run('find-stale-files', async () =>
-      supabase
+    const toDelete = (await step.run('find-stale-files', async () => {
+      const { data } = await supabase
         .from('onboarding_imports')
         .select('id, storage_path')
         .lt('created_at', cutoff.toISOString())
         .is('file_deleted_at', null)
-        .not('storage_path', 'is', null)
-    );
-
-    const toDelete = imports?.data ?? [];
+        .not('storage_path', 'is', null);
+      return data ?? [];
+    })) as Array<{ id: string; storage_path: string | null }>;
     logger.info({ count: toDelete.length }, 'Purging stale onboarding files');
 
     for (const imp of toDelete) {

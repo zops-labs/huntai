@@ -31,10 +31,13 @@ export async function getTodayJobs(
     .lt('scheduled_at', tomorrow + 'T00:00:00')
     .order('scheduled_at', { ascending: true });
 
-  return (data ?? []).map((j: Record<string, unknown>) => ({
-    ...(j as Job),
-    customer_name: (j.customers as { name: string } | null)?.name ?? null,
-  }));
+  return (data ?? []).map((j) => {
+    const row = j as unknown as Job & { customers?: { name: string } | null };
+    return {
+      ...row,
+      customer_name: row.customers?.name ?? null,
+    };
+  });
 }
 
 export async function createJob(job: Omit<Job, 'id' | 'created_at'>): Promise<Job> {
