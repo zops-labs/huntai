@@ -10,6 +10,7 @@ import { download360MediaFile, sendOwnerWhatsApp, sendWhatsAppMessage } from '..
 import { sanitiseInput } from '../lib/security.js';
 import { logger } from '../lib/logger.js';
 import { handleOnboardingMessage } from '../onboarding/index.js';
+import type { Owner } from '../orchestrator/types.js';
 
 // Twilio WhatsApp webhooks have the same shape as SMS webhooks,
 // but From/To are prefixed with "whatsapp:" e.g. "whatsapp:+34600000001"
@@ -115,7 +116,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
 async function handleOnboardingDocument(
   mediaUrl: string,
   filename: string,
-  owner: { id: string; onboarding_completed_at: string | null; owner_whatsapp: string; business_phone: string; business_name: string; owner_name: string; ai_persona_name: string; briefing_time: string; transcript_retention_months: number; subscription_tier: string; service_area: string[]; languages: string[]; pricing_notes: string | null; booking_rules: Record<string, unknown>; emergency_phone: string | null; google_calendar_id: string | null; google_tokens_enc: string | null; whatsapp_360_channel_id: string | null; twilio_number_sid: string; retell_agent_id: string; stripe_customer_id: string | null; created_at: string; deleted_at: string | null }
+  owner: Owner
 ) {
   const allowed = ['.txt', '.csv', '.xlsx', '.vcf'];
   const ext = path.extname(filename).toLowerCase() || '.txt'; // WhatsApp exports often have no extension
