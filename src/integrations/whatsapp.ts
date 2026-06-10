@@ -44,6 +44,19 @@ export async function sendOwnerWhatsApp(
 }
 
 /**
+ * Send a WhatsApp text message to an arbitrary phone number.
+ * Used for prospective-owner onboarding, before an Owner record exists.
+ */
+export async function sendWhatsAppMessage(to: string, text: string): Promise<void> {
+  const client = getTwilioClient();
+  await client.messages.create({
+    from: getWhatsAppFrom(),
+    to: waNumber(to),
+    body: text,
+  });
+}
+
+/**
  * Send a WhatsApp message with a media attachment (e.g. GDPR export file).
  */
 export async function sendOwnerWhatsAppDocument(

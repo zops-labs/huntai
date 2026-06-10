@@ -1,6 +1,6 @@
 import { inngest } from '../inngest/client.js';
 import { supabase } from '../db/supabase.js';
-import { createCustomer, updateCustomer, getCustomerByPhone } from '../db/queries/customers.js';
+import { createCustomer, getCustomerByPhone } from '../db/queries/customers.js';
 import { updateOwner } from '../db/queries/owners.js';
 import { sendOwnerWhatsApp } from '../integrations/whatsapp.js';
 import { createRetellAgent } from '../integrations/retell.js';
@@ -8,92 +8,119 @@ import { parseWhatsAppExport } from './whatsapp-parser.js';
 import { parseCSVText, detectColumnMapping, parseCSVRows } from './csv-importer.js';
 import { parseVCF } from './vcf-importer.js';
 import { getAuthUrl } from '../integrations/google-calendar.js';
+import { researchBusiness, formatProfileSummary, applyProfileEdits, emptyDraft } from './profile-research.js';
+import type { BusinessProfileDraft } from './profile-research.js';
 import { logger } from '../lib/logger.js';
 import type { Owner } from '../orchestrator/types.js';
 
 // ─── Onboarding conversation state ────────────────────────────────────────────
 
+type OnboardingStep =
+  | 'awaiting_info'
+  | 'confirm_profile'
+  | 'pricing'
+  | 'emergency'
+  | 'sundays';
+
+interface OnboardingState {
+  step: OnboardingStep;
+  draft: BusinessProfileDraft;
+  answers: Record<string, string>;
+}
+
 // Stored in-memory for MVP; move to Redis/Supabase for multi-instance
-const onboardingState = new Map<
-  string,
-  { step: number; answers: Record<string, string> }
->();
+const onboardingState = new Map<string, OnboardingState>();
 
 /**
  * Handle an onboarding message from a prospective owner.
- * Triggered when owner texts "SETUP" or is mid-onboarding flow.
+ * Triggered automatically the first time a new number messages us — no
+ * "SETUP" keyword required. Any message from a brand-new number starts a
+ * warm introduction.
+ *
+ * Flow:
+ *  1. Warm intro, ask for business name (and optionally a Google Maps /
+ *     website link).
+ *  2. Auto-research the business (Google Places + website) and present a
+ *     pre-filled summary for the owner to confirm or correct.
+ *  3. Once confirmed, ask only the handful of things that can't be found
+ *     online (pricing, emergency line, Sundays).
+ *  4. Create the owner record and Retell agent.
+ *
+ * `profileName` is the WhatsApp display name Twilio reports for the sender —
+ * used as an initial guess for the owner's own name.
  */
 export async function handleOnboardingMessage(
   ownerWhatsApp: string,
-  text: string
+  text: string,
+  profileName: string | null = null
 ): Promise<{ reply: string; done: boolean }> {
   let state = onboardingState.get(ownerWhatsApp);
 
-  if (!state || text.trim().toUpperCase() === 'SETUP') {
-    state = { step: 0, answers: {} };
+  if (!state) {
+    state = { step: 'awaiting_info', draft: emptyDraft(profileName), answers: {} };
     onboardingState.set(ownerWhatsApp, state);
     return {
       reply:
-        '¡Hola! Soy HuntAI, tu asistente comercial de piscinas. Voy a configurar tu cuenta en unos minutos.\n\n*Paso 1/8:* ¿Cuál es el nombre de tu empresa?',
+        '¡Hola! 👋 Soy *Encargado*, tu nuevo empleado de oficina con inteligencia artificial.\n\n' +
+        'A partir de hoy puedo encargarme de las llamadas, los mensajes, los presupuestos y los recordatorios de tus clientes — para que tú puedas centrarte en el trabajo (y en tu familia 😊).\n\n' +
+        'Para empezar, dime el *nombre de tu empresa*. Si tienes un enlace de tu ficha de Google (Maps) o de tu página web, pásamelo también — así puedo adelantar trabajo y rellenar tu perfil yo mismo.',
       done: false,
     };
   }
 
-  const { step, answers } = state;
-
-  // Collect answers step by step
-  const questions = [
-    {
-      key: 'business_name',
-      next: '¿Cuál es tu nombre (solo el nombre)? Por ejemplo: "Miguel"',
-    },
-    {
-      key: 'owner_name',
-      next: '¿Qué zonas cubres? (separa con comas: "Marbella, Estepona, San Pedro")',
-    },
-    {
-      key: 'service_area',
-      next: '¿En qué idiomas atiendes a los clientes? (por ejemplo: "español e inglés")',
-    },
-    {
-      key: 'languages',
-      next: '¿Cuál es tu horario de trabajo? (por ejemplo: "Lunes a Viernes 8:00-18:00")',
-    },
-    {
-      key: 'working_hours',
-      next: '¿Tienes número de emergencias disponible los 7 días? Si es así, ¿cuál?',
-    },
-    {
-      key: 'emergency_phone',
-      next: '¿Trabajas los domingos? (sí/no)',
-    },
-    {
-      key: 'works_sundays',
-      next: '¿Cuál es tu rango de precios habitual para un contrato mensual de mantenimiento? (por ejemplo: "100-200€/mes")',
-    },
-    {
-      key: 'pricing_notes',
-      next: null, // Last question
-    },
-  ];
-
-  if (step < questions.length) {
-    answers[questions[step].key] = text.trim();
-    state.step++;
-
-    if (state.step < questions.length) {
-      return { reply: questions[state.step].next!, done: false };
+  switch (state.step) {
+    case 'awaiting_info': {
+      const draft = await researchBusiness(text, state.draft.owner_name);
+      state.draft = draft;
+      state.step = 'confirm_profile';
+      return { reply: formatProfileSummary(draft, true), done: false };
     }
 
-    // All questions answered — create the owner record
-    const owner = await finaliseOwnerSetup(ownerWhatsApp, answers);
+    case 'confirm_profile': {
+      const { draft, confirmed } = await applyProfileEdits(state.draft, text);
+      state.draft = draft;
 
-    onboardingState.delete(ownerWhatsApp);
+      if (!confirmed) {
+        return { reply: formatProfileSummary(draft, false), done: false };
+      }
 
-    const reply = `
-✅ *Perfecto, ${answers.owner_name}!* Tu cuenta está casi lista.
+      state.step = 'pricing';
+      return {
+        reply:
+          '👍 ¡Perfecto! Solo me quedan 3 cositas que no puedo adivinar por internet:\n\n' +
+          '*1/3:* ¿Cuál es tu rango de precios habitual para un contrato mensual de mantenimiento? (por ejemplo: "100-200€/mes")',
+        done: false,
+      };
+    }
 
-Ahora quiero importar tu lista de clientes. Si tienes chats de WhatsApp con clientes:
+    case 'pricing': {
+      state.answers.pricing_notes = text.trim();
+      state.step = 'emergency';
+      return {
+        reply: '*2/3:* ¿Tienes un teléfono de emergencias disponible los 7 días? Si es así, ¿cuál? Si no, escribe "no".',
+        done: false,
+      };
+    }
+
+    case 'emergency': {
+      state.answers.emergency_phone = text.trim();
+      state.step = 'sundays';
+      return {
+        reply: '*3/3:* ¿Trabajas los domingos? (sí/no)',
+        done: false,
+      };
+    }
+
+    case 'sundays': {
+      state.answers.works_sundays = text.trim();
+
+      const owner = await finaliseOwnerSetup(ownerWhatsApp, state.draft, state.answers);
+      onboardingState.delete(ownerWhatsApp);
+
+      const reply = `
+✅ *¡Perfecto, ${owner.owner_name}!* Ya estoy listo para empezar a trabajar contigo. 🎉
+
+Un último paso opcional: si quieres, puedo importar tu lista de clientes para reconocerlos automáticamente cuando llamen o escriban.
 
 1. Abre un chat de cliente en WhatsApp
 2. Pulsa los 3 puntos → "Exportar chat" → "Sin archivos"
@@ -102,40 +129,48 @@ Ahora quiero importar tu lista de clientes. Si tienes chats de WhatsApp con clie
 Puedes enviar todos los que quieras. Cuando termines, escribe *DONE*.
 
 También acepto archivos .csv, .xlsx o .vcf de contactos.
-    `.trim();
+      `.trim();
 
-    return { reply, done: false };
+      return { reply, done: false };
+    }
+
+    default:
+      return {
+        reply:
+          'Perdona, no entendí ese mensaje 🙏 Si quieres empezar de nuevo, escríbeme "Hola" y configuramos tu cuenta otra vez.',
+        done: false,
+      };
   }
-
-  return { reply: 'No entendí ese mensaje. Escribe SETUP para empezar de nuevo.', done: false };
 }
 
 async function finaliseOwnerSetup(
   ownerWhatsApp: string,
+  draft: BusinessProfileDraft,
   answers: Record<string, string>
 ): Promise<Owner> {
-  const serviceArea = answers.service_area
-    ?.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean) ?? [];
+  const worksSundays = answers.works_sundays?.toLowerCase().trim();
+  const noSundays = worksSundays === 'no' || worksSundays?.startsWith('no');
 
-  const languages = answers.languages?.toLowerCase().includes('ingl')
-    ? ['es', 'en']
-    : ['es'];
+  const emergency = answers.emergency_phone?.trim().toLowerCase();
+  const emergencyPhone = emergency && emergency !== 'no' ? answers.emergency_phone.trim() : null;
 
   const { data: owner, error } = await supabase
     .from('owners')
     .insert({
-      business_name: answers.business_name,
-      owner_name: answers.owner_name,
+      business_name: draft.business_name ?? 'Mi negocio',
+      owner_name: draft.owner_name ?? draft.business_name ?? 'Encargado/a',
       owner_whatsapp: ownerWhatsApp,
       business_phone: ownerWhatsApp, // Placeholder — updated when Twilio number provisioned
-      service_area: serviceArea,
-      languages,
-      pricing_notes: answers.pricing_notes,
-      emergency_phone: answers.emergency_phone || null,
+      ai_persona_name: 'Encargado',
+      service_area: draft.service_area,
+      languages: draft.languages.length ? draft.languages : ['es'],
+      business_address: draft.business_address,
+      website: draft.website,
+      working_hours: draft.working_hours,
+      pricing_notes: answers.pricing_notes ?? null,
+      emergency_phone: emergencyPhone,
       booking_rules: {
-        no_sundays: answers.works_sundays?.toLowerCase().startsWith('no'),
+        no_sundays: noSundays,
         max_advance_days: 14,
       },
     })

@@ -6,9 +6,10 @@ import { orchestrate } from '../orchestrator/index.js';
 import { getOwnerByWhatsApp } from '../db/queries/owners.js';
 import { supabase } from '../db/supabase.js';
 import { inngest } from '../inngest/client.js';
-import { download360MediaFile, sendOwnerWhatsApp } from '../integrations/whatsapp.js';
+import { download360MediaFile, sendOwnerWhatsApp, sendWhatsAppMessage } from '../integrations/whatsapp.js';
 import { sanitiseInput } from '../lib/security.js';
 import { logger } from '../lib/logger.js';
+import { handleOnboardingMessage } from '../onboarding/index.js';
 
 // Twilio WhatsApp webhooks have the same shape as SMS webhooks,
 // but From/To are prefixed with "whatsapp:" e.g. "whatsapp:+34600000001"
@@ -21,6 +22,7 @@ const TwilioWhatsAppSchema = z.object({
   MediaUrl0: z.string().optional(),      // First media file URL (if any)
   MediaContentType0: z.string().optional(),
   MediaFilename0: z.string().optional(),
+  ProfileName: z.string().optional(),    // Sender's WhatsApp display name
 });
 
 // Strip "whatsapp:" prefix to get a plain E.164 number
@@ -97,6 +99,10 @@ export async function whatsappRoutes(app: FastifyInstance) {
           text,
           message_id: msgSid,
         });
+      } else if (text) {
+        // Brand-new number, not a known owner or customer — start onboarding.
+        const { reply } = await handleOnboardingMessage(fromPhone, text, body.ProfileName ?? null);
+        await sendWhatsAppMessage(fromPhone, reply);
       }
     }
 

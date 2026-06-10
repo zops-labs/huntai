@@ -8,8 +8,6 @@ import { retellRoutes } from './webhooks/retell.js';
 import { twilioRoutes } from './webhooks/twilio.js';
 import { whatsappRoutes } from './webhooks/whatsapp.js';
 import { exchangeCodeForTokens } from './integrations/google-calendar.js';
-import { handleOnboardingMessage } from './onboarding/index.js';
-import { getOwnerByWhatsApp } from './db/queries/owners.js';
 import { inngest } from './inngest/client.js';
 import { purgeOnboardingFilesJob } from './inngest/jobs/purge-onboarding-files.js';
 import { purgeOldTranscriptsJob } from './inngest/jobs/purge-old-transcripts.js';

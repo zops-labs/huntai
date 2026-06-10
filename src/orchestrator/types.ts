@@ -14,6 +14,9 @@ export interface Owner {
   pricing_notes: string | null;
   booking_rules: Record<string, unknown>;
   emergency_phone: string | null;
+  website: string | null;
+  business_address: string | null;
+  working_hours: string | null;
   google_calendar_id: string | null;
   google_tokens_enc: string | null;
   whatsapp_360_channel_id: string | null;
