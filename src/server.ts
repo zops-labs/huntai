@@ -13,7 +13,6 @@ import { getOwnerByWhatsApp } from './db/queries/owners.js';
 import { inngest } from './inngest/client.js';
 import { purgeOnboardingFilesJob } from './inngest/jobs/purge-onboarding-files.js';
 import { purgeOldTranscriptsJob } from './inngest/jobs/purge-old-transcripts.js';
-import { dailyBriefingSchedulerJob } from './inngest/jobs/daily-briefing-scheduler.js';
 import { hunterFollowUpJob } from './engines/hunter/index.js';
 import { farmerSeasonalCampaignJob, farmerReviewRequestJob } from './engines/farmer/index.js';
 import { dailyBriefingJob, sendBriefingJob } from './engines/briefer/index.js';
@@ -102,7 +101,6 @@ app.get('/auth/google/callback', async (req, reply) => {
 const allJobs = [
   purgeOnboardingFilesJob,
   purgeOldTranscriptsJob,
-  dailyBriefingSchedulerJob,
   hunterFollowUpJob,
   farmerSeasonalCampaignJob,
   farmerReviewRequestJob,
